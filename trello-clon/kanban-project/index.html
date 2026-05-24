@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gelişmiş Kanban Board</title>
+    <!-- Modern tipografi için Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=2">
+    <!-- jsPDF CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <h1>Kanban Board</h1>
+            <nav class="main-nav">
+                <button id="nav-board" class="nav-btn active">Pano</button>
+                <button id="nav-users" class="nav-btn">Kullanıcılar</button>
+            </nav>
+        </div>
+        <div class="header-center">
+            <input type="text" id="search-input" placeholder="Kartlarda ara..." aria-label="Kartlarda ara">
+            <select id="filter-label" class="header-select" aria-label="Etikete göre filtrele">
+                <option value="all">Tüm Etiketler</option>
+                <option value="red">Acil (Kırmızı)</option>
+                <option value="orange">Öncelikli (Turuncu)</option>
+                <option value="green">Tamamlandı (Yeşil)</option>
+                <option value="blue">Bilgi (Mavi)</option>
+                <option value="none">Etiketsiz</option>
+            </select>
+        </div>
+        <div class="header-right">
+            <button id="shortcuts-help-btn" class="icon-btn" aria-label="Kısayollar" title="Kısayollar (?)">?</button>
+            <button id="theme-toggle" class="icon-btn" aria-label="Gece/Gündüz Modu" title="Gece/Gündüz Modu">🌙</button>
+            <button id="import-btn" class="secondary-btn" aria-label="Verileri İçe Aktar">İçe Aktar</button>
+            <input type="file" id="import-input" accept=".json" style="display:none;" aria-hidden="true">
+            <button id="export-btn" class="secondary-btn" aria-label="JSON Dışa Aktar">JSON Aktar</button>
+            <button id="export-pdf-btn" class="secondary-btn pdf-btn" aria-label="PDF Olarak Dışa Aktar">📄 PDF</button>
+            <button id="add-user-btn-header" class="primary-btn" aria-label="Yeni Kullanıcı Ekle" style="display: none;">+ Kullanıcı Ekle</button>
+            <button id="add-column-btn" class="primary-btn" aria-label="Yeni Kolon Ekle">+ Kolon Ekle</button>
+        </div>
+    </header>
+
+    <main id="app-container">
+        <!-- Pano View -->
+        <div class="board view active-view" id="view-board" aria-label="Kanban Panosu">
+            <!-- Kolonlar JS ile dinamik eklenecek -->
+        </div>
+
+        <!-- Kullanıcılar View -->
+        <div class="users-view view hidden-view" id="view-users">
+            <div class="users-header">
+                <h2>Kullanıcı Yönetimi</h2>
+            </div>
+            <div class="users-grid" id="users-grid">
+                <!-- Kullanıcı kartları JS ile eklenecek -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Trello Tarzı Kart Detay Modalı -->
+    <div id="card-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-wrapper">
+
+            <!-- MODAL HEADER: Başlık + kolon bilgisi -->
+            <div class="modal-top-bar">
+                <div class="modal-top-bar-left">
+                    <span class="modal-col-icon">📋</span>
+                    <div>
+                        <h2 id="modal-title" contenteditable="true" title="Başlığı düzenlemek için tıklayın"></h2>
+                        <p class="modal-subtitle">Şu kolonda: <span id="modal-col-name">...</span></p>
+                    </div>
+                </div>
+                <button class="modal-close-x" id="modal-close-btn" aria-label="Kapat">✕</button>
+            </div>
+
+            <!-- MODAL BODY: Sol (içerik) + Sağ (sidebar) -->
+            <div class="modal-body">
+
+                <!-- ===== SOL PANEL ===== -->
+                <div class="modal-main">
+
+                    <!-- Açıklama -->
+                    <div class="modal-section">
+                        <div class="modal-section-title">
+                            <span class="section-icon">≡</span>
+                            <h3>Açıklama</h3>
+                        </div>
+                        <textarea id="modal-desc" placeholder="Kart için detaylı bir açıklama ekleyin..."></textarea>
+                    </div>
+
+                    <!-- Checklist -->
+                    <div class="modal-section">
+                        <div class="modal-section-title">
+                            <span class="section-icon">☑</span>
+                            <h3>Checklist</h3>
+                        </div>
+                        <div class="checklist-header">
+                            <span id="checklist-progress-text">0%</span>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill" id="checklist-progress-fill"></div>
+                            </div>
+                        </div>
+                        <div id="checklist-items" class="checklist-items"></div>
+                        <div class="add-checklist-row">
+                            <input type="text" id="new-checklist-input" placeholder="Görev ekle..." aria-label="Yeni Görev">
+                            <button id="add-checklist-btn" class="cl-add-btn">Ekle</button>
+                        </div>
+                    </div>
+
+                    <!-- Aktivite -->
+                    <div class="modal-section">
+                        <div class="modal-section-title">
+                            <span class="section-icon">◈</span>
+                            <h3>Aktivite Geçmişi</h3>
+                        </div>
+                        <ul id="activity-log" class="activity-log"></ul>
+                    </div>
+
+                </div><!-- /modal-main -->
+
+                <!-- ===== SAĞ PANEL (SIDEBAR) ===== -->
+                <div class="modal-sidebar">
+
+                    <!-- Atanan Kişi -->
+                    <div class="sb-module">
+                        <p class="sb-label">ATANAN KİŞİ</p>
+                        <div class="assignee-select-wrapper">
+                            <div id="modal-assignee-avatar" class="assignee-avatar-preview" style="display:none;"></div>
+                            <select id="modal-assignee" class="sb-select" aria-label="Kişi Ata">
+                                <option value="">Atanmadı</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Etiket -->
+                    <div class="sb-module">
+                        <p class="sb-label">ETİKET</p>
+                        <div class="label-preview-wrapper">
+                            <div id="modal-label-color" class="label-color-bar" style="display:none;"></div>
+                            <select id="modal-label" class="sb-select" aria-label="Kart Etiketi">
+                                <option value="">Yok</option>
+                                <option value="red">🔴 Acil</option>
+                                <option value="orange">🟠 Öncelikli</option>
+                                <option value="green">🟢 Tamamlandı</option>
+                                <option value="blue">🔵 Bilgi</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Son Tarih -->
+                    <div class="sb-module">
+                        <p class="sb-label">SON TARİH</p>
+                        <input type="date" id="modal-date" class="sb-input" aria-label="Son Teslim Tarihi">
+                    </div>
+
+                    <!-- Durum -->
+                    <div class="sb-module">
+                        <p class="sb-label">DURUM</p>
+                        <label class="status-toggle">
+                            <input type="checkbox" id="modal-completed" aria-label="Tamamlandı">
+                            <span class="status-toggle-text">Tamamlandı</span>
+                        </label>
+                    </div>
+
+                    <!-- Ayraç -->
+                    <div class="sb-divider"></div>
+
+                    <!-- Aksiyonlar -->
+                    <div class="sb-module">
+                        <button id="save-card-btn" class="sb-btn sb-btn-primary">💾 Değişiklikleri Kaydet</button>
+                        <button id="delete-card-btn" class="sb-btn sb-btn-danger">🗑️ Kartı Sil</button>
+                    </div>
+
+                </div><!-- /modal-sidebar -->
+
+            </div><!-- /modal-body -->
+        </div><!-- /modal-wrapper -->
+    </div>
+
+
+    <!-- Kısayollar Modal -->
+    <div id="shortcuts-modal" role="dialog" aria-modal="true" aria-labelledby="sc-title"
+         style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55);
+                backdrop-filter:blur(4px); z-index:2000;
+                justify-content:center; align-items:center;">
+        <div class="sc-box">
+            <div class="sc-header">
+                <h2 id="sc-title">⌨️ Kısayollar</h2>
+                <button id="shortcuts-close-btn" class="sc-close" aria-label="Kapat">✕</button>
+            </div>
+            <table class="sc-table">
+                <tbody>
+                    <tr><td class="sc-key">N</td><td>Yeni kart ekle (ilk kolona)</td></tr>
+                    <tr><td class="sc-key">K</td><td>Aramaya odaklan</td></tr>
+                    <tr><td class="sc-key">?</td><td>Bu ekranı aç / kapat</td></tr>
+                    <tr><td class="sc-key">ESC</td><td>Açık modalı kapat</td></tr>
+                    <tr><td class="sc-key">Enter</td><td>Formu onayla</td></tr>
+                </tbody>
+            </table>
+            <p class="sc-hint">Input odaktayken kısayollar devre dışıdır.</p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" aria-live="polite"></div>
+
+    <!-- Modüller -->
+    <script src="js/storage.js?v=2"></script>
+    <script src="js/ui.js?v=2"></script>
+    <script src="js/drag.js?v=2"></script>
+    <script src="js/app.js?v=2"></script>
+    <script src="js/keyboard.js?v=1"></script>
+    <script src="js/touch.js?v=1"></script>
+</body>
+</html>
